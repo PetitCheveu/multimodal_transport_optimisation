@@ -12,7 +12,31 @@ from sklearn.neighbors import BallTree
 from collections import defaultdict
 
 class GTFSProcessor:
+    """
+    A class to process GTFS (General Transit Feed Specification) data, build multimodal transport graphs,
+    enrich them with pedestrian and bicycle connections, and visualize optimal paths.
+
+    Attributes:
+        gtfs_dir (str): Directory where GTFS files are stored.
+        db_params (dict): Database connection parameters.
+        engine (sqlalchemy.Engine): SQLAlchemy engine for PostgreSQL interaction.
+        graph (defaultdict): Adjacency list representing the multimodal graph.
+        node_coords (dict): Dictionary of node coordinates by stop ID.
+        bike_coords (dict): Coordinates of bike stations.
+    """
+
     def __init__(self, gtfs_dir="data", db_params=None):
+        """
+        Initializes the GTFSProcessor by loading GTFS data and setting up the database engine.
+
+        Args:
+            gtfs_dir (str): Directory containing GTFS data files.
+            db_params (dict): Parameters for database connection (optional).
+        """
+        self.stops_df = None
+        self.stop_times_df = None
+        self. trips_df = None
+        self.routes_df = None
         self.bike_coords = None
         self.gtfs_dir = gtfs_dir
         self.db_params = db_params or {
@@ -30,18 +54,21 @@ class GTFSProcessor:
         self.load_dataframes()
 
     def load_dataframes(self):
-        # self.stops_df = pd.read_csv(os.path.join(self.gtfs_dir, "stops.txt"))
-        # self.stop_times_df = pd.read_csv(os.path.join(self.gtfs_dir, "stop_times.txt"))
+        """
+        Loads GTFS text files into pandas DataFrames.
+        Required files: stops.txt, stop_times.txt, trips.txt, routes.txt.
+        """
         self.stops_df = pd.read_csv(os.path.join(self.gtfs_dir, "stops.txt"), dtype={"stop_id": str})
         self.stop_times_df = pd.read_csv(os.path.join(self.gtfs_dir, "stop_times.txt"),
                                          dtype={"stop_id": str, "trip_id": str})
 
         self.trips_df = pd.read_csv(os.path.join(self.gtfs_dir, "trips.txt"))
         self.routes_df = pd.read_csv(os.path.join(self.gtfs_dir, "routes.txt"))
-        # print(self.stop_times_df.head())
-        # print("stop_id types:", self.stop_times_df["stop_id"].apply(type).value_counts())
 
     def insert_into_db(self):
+        """
+        Inserts GTFS data into a PostgreSQL database using efficient bulk operations.
+        """
         conn = psycopg2.connect(**self.db_params)
         cursor = conn.cursor()
         from psycopg2.extras import execute_values
@@ -75,18 +102,25 @@ class GTFSProcessor:
         conn.close()
 
     def fetch_shared_vehicle_stations(self):
+        """
+        Fetches bike station data from an external GBFS API and stores their coordinates.
+        """
         url = "https://stables.donkey.bike/api/public/gbfs/2/donkey_valenciennes/en/station_information.json"
         stations = requests.get(url).json()["data"]["stations"]
         self.bike_coords = {s["name"]: (s["lat"], s["lon"]) for s in stations}
 
     def build_graph_from_trips(self):
+        """
+        Constructs a graph from GTFS trip stop sequences, calculating distances and durations.
+        Adds edges between consecutive stops within each trip.
+        """
         self.node_coords = {
             row.stop_id: (row.stop_lat, row.stop_lon)
             for _, row in self.stops_df.iterrows()
         }
 
         if self.node_coords:
-            print(f"🧭 {len(self.node_coords)} coordonnées d'arrêts chargées")
+            print(f"🧭 {len(self.node_coords)} stop coordinates loaded")
 
         grouped = self.stop_times_df.groupby("trip_id")
         added = 0
@@ -112,9 +146,15 @@ class GTFSProcessor:
                     })
                     added += 1
 
-        print(f"✅ Graphe construit avec {len(self.graph)} sommets et {added} arêtes transport")
+        print(f"✅ Graph built with {len(self.graph)} nodes and {added} transport edges")
 
     def simplify_graph(self, distance_threshold=0.02):
+        """
+        Merges stops with identical names and close proximity to simplify the graph.
+
+        Args:
+            distance_threshold (float): Radius in kilometers to consider for merging.
+        """
         ids = list(self.node_coords.keys())
         coords = np.radians([self.node_coords[i] for i in ids])
         tree = BallTree(coords)
@@ -145,16 +185,34 @@ class GTFSProcessor:
         }
 
     def save_graph_to_json(self, path):
+        """
+        Saves the current graph and node coordinates to a JSON file.
+
+        Args:
+            path (str): Path to save the JSON output.
+        """
         with open(path, 'w', encoding='utf-8') as f:
             json.dump({"graph": self.graph, "coords": self.node_coords}, f, indent=2)
 
     def load_graph_from_json(self, path):
+        """
+        Loads a graph and node coordinates from a JSON file.
+
+        Args:
+            path (str): Path to the JSON input file.
+        """
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         self.graph = defaultdict(list, {k: v for k, v in data["graph"].items()})
         self.node_coords = {k: tuple(v) for k, v in data["coords"].items()}
 
     def enrich_with_bike_stations(self, gmaps):
+        """
+        Adds bike connections between stations using travel data from the Google Maps client.
+
+        Args:
+            gmaps (GoogleMapsClient): Client to fetch travel time and distance between points.
+        """
         for i, (a_id, a_coord) in enumerate(self.bike_coords.items()):
             for j, (b_id, b_coord) in enumerate(self.bike_coords.items()):
                 if a_id != b_id:
@@ -169,6 +227,13 @@ class GTFSProcessor:
         self.node_coords.update(self.bike_coords)
 
     def enrich_with_pedestrian_links(self, max_dist_km=0.2, speed_kmh=4.5):
+        """
+        Adds walking links between nodes within a given distance threshold.
+
+        Args:
+            max_dist_km (float): Maximum distance in kilometers to consider for walking.
+            speed_kmh (float): Assumed average walking speed in km/h.
+        """
         ids = list(self.node_coords.keys())
         coords = np.radians([self.node_coords[i] for i in ids])
         tree = BallTree(coords)
@@ -225,7 +290,20 @@ class GTFSProcessor:
                             )
                             break
 
-    def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, visual_filename="chemin_folium.html"):
+    def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, visual_filename="maps_results/chemin_folium.html"):
+        """
+        Visualizes the shortest path between two nodes on a map using Folium.
+
+        Args:
+            start (str): Start node ID.
+            end (str): End node ID.
+            allow_bike (bool): Whether to include bike edges in the path.
+            allow_transport (bool): Whether to include public transport edges.
+            visual_filename (str): Path to save the resulting HTML map.
+
+        Returns:
+            tuple: (Total duration in minutes, list of node IDs representing the path)
+        """
         queue = [(0, start, [])]
         visited = set()
         predecessors = {}
@@ -233,16 +311,12 @@ class GTFSProcessor:
 
         while queue:
             (cost, node, path) = heapq.heappop(queue)
-            # print(f"Visiting node: {node} with cost: {cost}, path: {path}")
             if node in visited:
                 continue
             visited.add(node)
             path = path + [node]
-            # print(f"Current path: {path}")
             if node == end:
-                # print(f"Found end node: {end} with cost: {cost}")
                 break
-            # print(f"? {self.graph.get(node, [])}")
             for edge in self.graph.get(node, []):
                 if not allow_bike and edge.get("mode") == "bike":
                     continue
@@ -251,7 +325,6 @@ class GTFSProcessor:
                 duration = edge.get("duration_min")
                 if duration is None:
                     duration = 0
-                    # continue
                 next_node = edge["to"]
                 new_cost = cost + duration
                 if next_node not in costs or new_cost < costs[next_node]:
@@ -260,7 +333,7 @@ class GTFSProcessor:
                     predecessors[next_node] = (node, edge)
 
         if end not in predecessors:
-            print("❌ Aucun chemin trouvé.")
+            print("❌ No path found.")
             return float("inf"), []
 
         current = end
@@ -276,24 +349,6 @@ class GTFSProcessor:
 
         m = folium.Map(location=self.node_coords.get(start, [50.35, 3.52]), zoom_start=13)
         total_distance = 0
-        # for i in range(len(path) - 1):
-        #     c1 = self.node_coords.get(path[i])
-        #     c2 = self.node_coords.get(path[i + 1])
-        #     if c1 and c2:
-        #         edge_data = next((e for e in self.graph.get(path[i], []) if e['to'] == path[i + 1]), {})
-        #         mode = edge_data.get('mode', '?')
-        #         dist = edge_data.get('distance_km', '?')
-        #         duration = edge_data.get('duration_min', '?')
-        #         co2 = edge_data.get('co2_kg', '?')
-        #         total_distance += edge_data.get('distance_km', 0) or 0
-        #         popup_text = f"{path[i]} → {path[i + 1]} | Mode: {mode} | Dist: {dist} km | Durée: {duration} min | CO2: {co2} kg"
-        #         folium.Marker(c1, tooltip=path[i]).add_to(m)
-        #         folium.PolyLine([c1, c2], color="blue", tooltip=popup_text).add_to(m)
-        #         print(
-        #             f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
-        #
-        # folium.Marker(self.node_coords[end], tooltip=end, icon=folium.Icon(color="green")).add_to(m)
-                # Marqueurs de départ (vert) et d'arrivée (rouge)
         folium.Marker(self.node_coords[start], tooltip=start, icon=folium.Icon(color="green")).add_to(m)
         folium.Marker(self.node_coords[end], tooltip=end, icon=folium.Icon(color="red")).add_to(m)
 
@@ -320,16 +375,22 @@ class GTFSProcessor:
                 folium.PolyLine([c1, c2], color=color, tooltip=popup_text).add_to(m)
                 print(            f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
         m.save(f"{visual_filename}")
-        print(f"📍 Carte enregistrée : {visual_filename}")
-        print("📏 Distance totale estimée :", round(total_distance, 2), "km")
-        print("⏱️ Durée totale estimée :", costs[end], "min")
-        print("Trajet :", " → ".join(path))
+        print(f"📍 Map saved to: {visual_filename}")
+        print("📏 Total estimated distance:", round(total_distance, 2), "km")
+        print("⏱️ Total estimated duration:", costs[end], "min")
+        print("Path:", " → ".join(path))
         return costs[end], path
 
     def find_nearest_accessible_node(self, coord, allow_bike=True):
         """
-        Trouve le sommet le plus proche des coordonnées. Si allow_bike=False,
-        on exclut les sommets connectés uniquement à des stations vélo.
+        Finds the nearest graph node to the given coordinates, optionally excluding bike-only nodes.
+
+        Args:
+            coord (tuple): Latitude and longitude coordinates.
+            allow_bike (bool): Whether to include bike-only nodes.
+
+        Returns:
+            dict: Closest node info with keys: 'node', 'distance_km', 'duration_min'
         """
         from geopy.distance import geodesic
 
@@ -342,7 +403,7 @@ class GTFSProcessor:
             }
 
         if not filtered_nodes:
-            print("❌ Aucun sommet accessible trouvé.")
+            print("❌ No accessible node found.")
             return None
 
         nearest = min(filtered_nodes.items(), key=lambda item: geodesic(coord, item[1]).km)
@@ -355,13 +416,17 @@ class GTFSProcessor:
 
     def find_and_visualize_trip_from_coordinates(self, coord_start, coord_end, allow_bike=True):
         """
-        Finds the nearest graph nodes to the coordinates, prepends/appends walking legs,
-        and visualizes the full multimodal trip.
+        Finds and visualizes the shortest multimodal path between two coordinate points.
+
+        Args:
+            coord_start (tuple): Starting coordinates.
+            coord_end (tuple): Ending coordinates.
+            allow_bike (bool): Whether to allow bicycle edges in routing.
         """
         nearest_start = self.find_nearest_accessible_node(coord_start, allow_bike)
         nearest_end = self.find_nearest_accessible_node(coord_end, allow_bike)
         if not nearest_start or not nearest_end:
-            print("❌ Aucun sommet accessible trouvé pour le départ ou l'arrivée.")
+            print("❌ No accessible node found for start or end.")
             return
 
         walk_to_start = nearest_start
@@ -372,11 +437,11 @@ class GTFSProcessor:
         cost, path = self.visualize_shortest_path(start_node, end_node, allow_bike=allow_bike)
 
         if cost == float('inf'):
-            print("❌ Aucun chemin trouvé entre les nœuds du graphe.")
+            print("❌ No path found between the selected graph nodes.")
             return
 
-        print(f"🚶 Distance à pied départ : {walk_to_start['distance_km']} km ({walk_to_start['duration_min']} min)")
-        print(f"🚶 Distance à pied arrivée : {walk_from_end['distance_km']} km ({walk_from_end['duration_min']} min)")
+        print(f"🚶 Walking distance to start: {walk_to_start['distance_km']} km ({walk_to_start['duration_min']} min)")
+        print(f"🚶 Walking distance from end: {walk_from_end['distance_km']} km ({walk_from_end['duration_min']} min)")
         total_time = cost + walk_to_start['duration_min'] + walk_from_end['duration_min']
-        print(f"⏱️ Temps total estimé (avec marche) : {round(total_time, 2)} min")
+        print(f"⏱️ Total estimated time (including walking): {round(total_time, 2)} min")
 

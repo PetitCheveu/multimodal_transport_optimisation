@@ -24,11 +24,11 @@ class GTFSLoader:
         """
         self.gtfs_dir = gtfs_dir
         self.db_params = db_params or {
-            "dbname": "transport",
-            "user": "Elena",
-            "password": "E!3na2002",
-            "host": "localhost",
-            "port": "5432"
+            "dbname": os.getenv("DATABASE_NAME"),
+            "user": os.getenv("DATABASE_USER"),
+            "password": os.getenv("DATABASE_PASSWORD"),
+            "host": os.getenv("DATABASE_HOST"),
+            "port": int(os.getenv("DATABASE_PORT", 5432))
         }
         self.conn = psycopg2.connect(**self.db_params)
         self.cursor = self.conn.cursor()

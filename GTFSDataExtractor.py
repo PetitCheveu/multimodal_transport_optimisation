@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import psycopg2
 import requests
@@ -11,7 +12,7 @@ class GTFSDataExtractor:
         self.stops_df = None
         self.stop_times_df = None
         self.gtfs_dir = gtfs_dir
-        self.conn = psycopg2.connect(dbname="transport", user="Elena", password="E!3na2002", host="localhost", port="5432")
+        self.conn = psycopg2.connect(dbname=os.getenv("DATABASE_NAME"), user=os.getenv("DATABASE_USER"), password=os.getenv("DATABASE_PASSWORD"), host=os.getenv("DATABASE_HOST"), port=int(os.getenv("DATABASE_PORT", 5432)))
         self.cursor = self.conn.cursor()
 
         # URLs des données de vélos/trottinettes
@@ -201,7 +202,7 @@ class GTFSDataExtractor:
             ).add_to(map_valenciennes)
 
         # Sauvegarde de la carte
-        map_file = "map.html"
+        map_file = "maps_results/map.html"
         map_valenciennes.save(map_file)
         print(f"✔ Carte enregistrée dans '{map_file}'.")
 

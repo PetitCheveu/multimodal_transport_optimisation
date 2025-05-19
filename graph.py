@@ -133,7 +133,7 @@
 #             display_path(path, coords)
 #         else:
 #             print("❌ Aucun chemin trouvé.")
-
+import os
 
 import psycopg2
 from geopy.distance import geodesic
@@ -240,11 +240,11 @@ def display_path(path_ids, node_coords):
 # === Main ===
 if __name__ == "__main__":
     db_params = {
-        "dbname": "transport",
-        "user": "Elena",
-        "password": "E!3na2002",
-        "host": "localhost",
-        "port": "5432"
+        "dbname": os.getenv("DATABASE_NAME"),
+        "user": os.getenv("DATABASE_USER"),
+        "password": os.getenv("DATABASE_PASSWORD"),
+        "host": os.getenv("DATABASE_HOST"),
+        "port": int(os.getenv("DATABASE_PORT", 5432))
     }
 
     with psycopg2.connect(**db_params) as conn:

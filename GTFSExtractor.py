@@ -212,7 +212,7 @@ class GTFSExtractor:
             ).add_to(map_valenciennes)
 
         # Sauvegarde de la carte
-        map_file = "map.html"
+        map_file = "maps_results/map.html"
         map_valenciennes.save(map_file)
         print(f"✔ Carte enregistrée dans '{map_file}'.")
 

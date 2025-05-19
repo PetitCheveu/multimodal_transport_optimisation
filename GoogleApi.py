@@ -1,10 +1,7 @@
 import requests
 import os
-import psycopg2
-import pandas as pd
 import json
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
 import heapq
 from sklearn.neighbors import BallTree
 import numpy as np
@@ -12,7 +9,17 @@ from tqdm import tqdm
 import folium
 
 class GoogleMapsClient:
+    """
+    A client to interact with the Google Maps Distance Matrix API,
+    and to build and manipulate a multimodal transport graph enriched with real-world travel data.
+    """
+
     def __init__(self):
+        """
+        Initializes the GoogleMapsClient by loading the API key from the environment.
+        Raises:
+            ValueError: If the API key is not found in the environment variables.
+        """
         load_dotenv()
         self.api_key = os.getenv("GOOGLE_MAPS_API_KEY")
         if not self.api_key:
@@ -20,6 +27,17 @@ class GoogleMapsClient:
         self.base_url = "https://maps.googleapis.com/maps/api/distancematrix/json"
 
     def get_travel_info(self, origin, destination, mode="walking"):
+        """
+        Retrieves travel distance and duration from Google Maps API between two points.
+
+        Args:
+            origin (tuple): Latitude and longitude of the origin.
+            destination (tuple): Latitude and longitude of the destination.
+            mode (str): Mode of transport (e.g., "walking", "driving", "bicycling").
+
+        Returns:
+            dict or None: Dictionary containing distance in km and duration in minutes, or None if unavailable.
+        """
         params = {
             "origins": f"{origin[0]},{origin[1]}",
             "destinations": f"{destination[0]},{destination[1]}",
@@ -43,7 +61,16 @@ class GoogleMapsClient:
         return None
 
     def enrich_graph_with_api(self, graph, node_coords, mode="bicycling", max_edges=100):
-        print(f"📡 Enrichissement du graphe avec Google Maps API (mode: {mode})...")
+        """
+        Enriches a graph's edges with real-world distances and durations using the Google Maps API.
+
+        Args:
+            graph (dict): Graph data structure with node connections.
+            node_coords (dict): Dictionary mapping node IDs to (lat, lon) coordinates.
+            mode (str): Transport mode for API queries.
+            max_edges (int): Maximum number of API calls (limits cost and quota usage).
+        """
+        print(f"📡 Enriching graph with Google Maps API (mode: {mode})...")
         self.api_cache = {}
         count = 0
         for from_node, edges in tqdm(graph.items(), desc=f"Enrichissement {mode}"):
@@ -67,11 +94,25 @@ class GoogleMapsClient:
                     edge["duration_min"] = result["duration_min"]
                     count += 1
                     if count >= max_edges:
-                        print(f"⏹️ Limite atteinte ({max_edges} arêtes enrichies)")
+                        print(f"⏹️ Limit reached ({max_edges} edges enriched)")
                         return
-        print("✅ Graphe enrichi avec les données API")
+        print("✅ Graph successfully enriched with API data")
 
     def build_full_multimodal_graph(self, transport_edges, bike_stations, stop_coords, bike_coords):
+        """
+        Constructs a multimodal graph combining transport, walking, and biking connections.
+
+        Args:
+            transport_edges (list): List of tuples representing public transport connections.
+            bike_stations (list): List of bike station IDs (not used directly in this method).
+            stop_coords (dict): Coordinates of transport stops.
+            bike_coords (dict): Coordinates of bike stations.
+
+        Returns:
+            tuple: A tuple (graph, node_coords) where:
+                graph (dict): The constructed multimodal graph.
+                node_coords (dict): Dictionary of node coordinates.
+        """
         graph = {}
         node_coords = {}
 
@@ -118,17 +159,47 @@ class GoogleMapsClient:
         return graph, node_coords
 
     def save_graph_to_json(self, graph, filepath):
+        """
+        Saves the graph to a JSON file.
+
+        Args:
+            graph (dict): The graph to save.
+            filepath (str): The path to the output JSON file.
+        """
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(graph, f, indent=2)
-        print(f"📁 Graphe sauvegardé dans '{filepath}'")
+        print(f"📁 Graph saved to '{filepath}'")
 
     def load_graph_from_json(self, filepath):
+        """
+        Loads a graph from a JSON file.
+
+        Args:
+            filepath (str): The path to the JSON file.
+
+        Returns:
+            dict: The loaded graph.
+        """
         with open(filepath, 'r', encoding='utf-8') as f:
             graph = json.load(f)
-        print(f"📂 Graphe chargé depuis '{filepath}'")
+        print(f"📂 Graph loaded from '{filepath}'")
         return graph
 
     def visualize_shortest_path(self, graph, node_coords, start, end):
+        """
+        Visualizes the shortest path between two nodes using Folium and Dijkstra's algorithm (based on duration).
+
+        Args:
+            graph (dict): The multimodal graph.
+            node_coords (dict): Dictionary of node coordinates.
+            start (str): ID of the start node.
+            end (str): ID of the end node.
+
+        Returns:
+            tuple: A tuple (total_cost, path) where:
+                total_cost (float): Total travel time in minutes.
+                path (list): List of node IDs representing the path.
+        """
         queue = [(0, start, [])]
         visited = set()
         while queue:
@@ -149,7 +220,7 @@ class GoogleMapsClient:
                 if node_coords.get(end):
                     folium.Marker(node_coords[end], tooltip=end, icon=folium.Icon(color="green")).add_to(m)
                 m.save("chemin_folium.html")
-                print("📍 Carte enregistrée : chemin_folium.html")
+                print("📍 Map saved: chemin_folium.html")
                 return cost, path
             for edge in graph.get(node, []):
                 next_node = edge["to"]
@@ -157,63 +228,3 @@ class GoogleMapsClient:
                 if duration is not None:
                     heapq.heappush(queue, (cost + duration, next_node, path))
         return float("inf"), []
-
-
-# if __name__ == "__main__":
-#     gmaps = GoogleMapsClient()
-#
-#     engine = create_engine("postgresql+psycopg2://Elena:E!3na2002@localhost:5432/transport")
-#     stops_df = pd.read_sql("SELECT stop_id, stop_lat, stop_lon FROM stops", engine)
-#     stop_times_df = pd.read_sql("SELECT trip_id, stop_id, stop_sequence FROM stop_times", engine)
-#     bikes_df = pd.read_sql("SELECT name, lat, lon FROM shared_vehicle_stations", engine)
-#
-#     stop_coords = {row.stop_id: (row.stop_lat, row.stop_lon) for _, row in stops_df.iterrows()}
-#     bike_coords = {row.name: (row.lat, row.lon) for _, row in bikes_df.iterrows()}
-#     bike_stations = list(bike_coords.keys())
-#
-#     stop_times_df = stop_times_df.sort_values(by=["trip_id", "stop_sequence"]).drop_duplicates()
-#     transport_edges = []
-#     for trip_id, group in stop_times_df.groupby("trip_id"):
-#         stops = list(group.stop_id)
-#         transport_edges += list(zip(stops, stops[1:]))
-#
-#     graph, node_coords = gmaps.build_full_multimodal_graph(transport_edges, bike_stations, stop_coords, bike_coords)
-#     gmaps.save_graph_to_json(graph, "graphe_multimodal.json")
-#
-#     loaded_graph = gmaps.load_graph_from_json("graphe_multimodal.json")
-#     print("🌐 Graphe multimodal (extrait) :")
-#
-#     # Test de recherche de chemin
-#     start_node = list(stop_coords.keys())[0]
-#     end_node = list(bike_coords.keys())[0]  # Exemple : vers une station vélo
-#     total_time, path = gmaps.visualize_shortest_path(graph, node_coords, start_node, end_node)
-#     print(f"🧪 Chemin trouvé de '{start_node}' à '{end_node}':")
-#     print(" → ".join(path))
-#     print(f"⏱️ Durée totale estimée : {total_time:.2f} min")
-#     for k, v in list(loaded_graph.items())[:5]:
-#         print(k, "=>", v)
-
-if __name__ == "__main__":
-    gmaps = GoogleMapsClient()
-
-    engine = create_engine("postgresql+psycopg2://Elena:E!3na2002@localhost:5432/transport")
-    stops_df = pd.read_sql("SELECT stop_id, stop_lat, stop_lon FROM stops", engine)
-    stop_times_df = pd.read_sql("SELECT trip_id, stop_id, stop_sequence FROM stop_times", engine)
-    bikes_df = pd.read_sql("SELECT name, lat, lon FROM shared_vehicle_stations", engine)
-
-    stop_coords = {row.stop_id: (row.stop_lat, row.stop_lon) for _, row in stops_df.iterrows()}
-    bike_coords = {row.name: (row.lat, row.lon) for _, row in bikes_df.iterrows()}
-    bike_stations = list(bike_coords.keys())
-
-    stop_times_df = stop_times_df.sort_values(by=["trip_id", "stop_sequence"]).drop_duplicates()
-    transport_edges = []
-    for trip_id, group in stop_times_df.groupby("trip_id"):
-        stops = list(group.stop_id)
-        transport_edges += list(zip(stops, stops[1:]))
-
-    graph, node_coords = gmaps.build_full_multimodal_graph(transport_edges, bike_stations, stop_coords, bike_coords)
-
-    start_node = list(stop_coords.keys())[0]
-    end_node = list(bike_coords.keys())[0]
-
-    gmaps.visualize_shortest_path(graph, node_coords, start_node, end_node)

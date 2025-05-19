@@ -1,3 +1,4 @@
 /data/*
 .env
-/graphe_complet.json
+/graph_results/graphe_complet.json
+/maps_results/

@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import numpy as np
 import psycopg2
@@ -87,11 +89,11 @@ class MultimodalRouteFinder:
 # Exemple d'utilisation :
 if __name__ == "__main__":
     db_params = {
-        "dbname": "transport",
-        "user": "Elena",
-        "password": "E!3na2002",
-        "host": "localhost",
-        "port": "5432"
+        "dbname": os.getenv("DATABASE_NAME"),
+        "user": os.getenv("DATABASE_USER"),
+        "password": os.getenv("DATABASE_PASSWORD"),
+        "host": os.getenv("DATABASE_HOST"),
+        "port": int(os.getenv("DATABASE_PORT", 5432))
     }
     finder = MultimodalRouteFinder(db_config=db_params)
     coord_depart = (50.3566, 3.5225)  # Valenciennes Gare
