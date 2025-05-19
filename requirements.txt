@@ -1,0 +1,9 @@
+python-dotenv
+sqlalchemy
+geopy
+requests
+folium
+psycopg2
+pandas
+numpy
+tqdm
