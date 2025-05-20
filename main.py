@@ -2,12 +2,14 @@ import time
 from GTFSProcessor import GTFSProcessor
 from GoogleApi import GoogleMapsClient
 from dotenv import load_dotenv
+from logger import setup_logger
 
 if __name__ == "__main__":
     load_dotenv()
     gmaps = GoogleMapsClient()
     processor = GTFSProcessor(gtfs_dir="data")
     processor.load_graph_from_json("graph_results/graphe_complet.json")
+    logger = setup_logger("logs/main_transport_emissions.log")
 
     # # Step 1: Load GTFS data from files
     # processor.load_dataframes()

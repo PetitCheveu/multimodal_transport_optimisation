@@ -2,3 +2,4 @@
 .env
 /graph_results/
 /maps_results/
+/logs/

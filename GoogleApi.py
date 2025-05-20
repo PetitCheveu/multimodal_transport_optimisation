@@ -14,7 +14,7 @@ class GoogleMapsClient:
     and to build and manipulate a multimodal transport graph enriched with real-world travel data.
     """
 
-    def __init__(self):
+    def __init__(self, logger=None):
         """
         Initializes the GoogleMapsClient by loading the API key from the environment.
         Raises:
@@ -25,6 +25,7 @@ class GoogleMapsClient:
         if not self.api_key:
             raise ValueError("Google Maps API key not found in .env file under GOOGLE_MAPS_API_KEY")
         self.base_url = "https://maps.googleapis.com/maps/api/distancematrix/json"
+        self.logger = logger
 
     def get_travel_info(self, origin, destination, mode="walking"):
         """
@@ -71,6 +72,8 @@ class GoogleMapsClient:
             max_edges (int): Maximum number of API calls (limits cost and quota usage).
         """
         print(f"📡 Enriching graph with Google Maps API (mode: {mode})...")
+        if self.logger is not None:
+            self.logger.info(f"Enriching graph with Google Maps API (mode: {mode})...")
         self.api_cache = {}
         count = 0
         for from_node, edges in tqdm(graph.items(), desc=f"Enrichissement {mode}"):
@@ -95,8 +98,12 @@ class GoogleMapsClient:
                     count += 1
                     if count >= max_edges:
                         print(f"⏹️ Limit reached ({max_edges} edges enriched)")
+                        if self.logger is not None:
+                            self.logger.info(f"Limit reached ({max_edges} edges enriched)")
                         return
         print("✅ Graph successfully enriched with API data")
+        if self.logger is not None:
+            self.logger.info("Graph successfully enriched with API data")
 
     def build_full_multimodal_graph(self, transport_edges, bike_stations, stop_coords, bike_coords):
         """
@@ -169,6 +176,8 @@ class GoogleMapsClient:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(graph, f, indent=2)
         print(f"📁 Graph saved to '{filepath}'")
+        if self.logger is not None:
+            self.logger.info(f"Graph saved to '{filepath}'")
 
     def load_graph_from_json(self, filepath):
         """
@@ -183,6 +192,8 @@ class GoogleMapsClient:
         with open(filepath, 'r', encoding='utf-8') as f:
             graph = json.load(f)
         print(f"📂 Graph loaded from '{filepath}'")
+        if self.logger is not None:
+            self.logger.info(f"Graph loaded from '{filepath}'")
         return graph
 
     def visualize_shortest_path(self, graph, node_coords, start, end):
@@ -221,6 +232,8 @@ class GoogleMapsClient:
                     folium.Marker(node_coords[end], tooltip=end, icon=folium.Icon(color="green")).add_to(m)
                 m.save("chemin_folium.html")
                 print("📍 Map saved: chemin_folium.html")
+                if self.logger is not None:
+                    self.logger.info("Map saved: chemin_folium.html")
                 return cost, path
             for edge in graph.get(node, []):
                 next_node = edge["to"]

@@ -25,7 +25,7 @@ class GTFSProcessor:
         bike_coords (dict): Coordinates of bike stations.
     """
 
-    def __init__(self, gtfs_dir="data", db_params=None):
+    def __init__(self, gtfs_dir="data", db_params=None, logger=None):
         """
         Initializes the GTFSProcessor by loading GTFS data and setting up the database engine.
 
@@ -52,6 +52,7 @@ class GTFSProcessor:
         self.graph = defaultdict(list)
         self.node_coords = {}
         self.load_dataframes()
+        self.logger = logger
 
     def load_dataframes(self):
         """
@@ -121,6 +122,8 @@ class GTFSProcessor:
 
         if self.node_coords:
             print(f"🧭 {len(self.node_coords)} stop coordinates loaded")
+            if self.logger is not None:
+                logger.info(f"🧭 {len(self.node_coords)} stop coordinates loaded")
 
         grouped = self.stop_times_df.groupby("trip_id")
         added = 0
@@ -147,6 +150,8 @@ class GTFSProcessor:
                     added += 1
 
         print(f"✅ Graph built with {len(self.graph)} nodes and {added} transport edges")
+        if self.logger is not None:
+            logger.info(f"✅ Graph built with {len(self.graph)} nodes and {added} transport edges")
 
     def simplify_graph(self, distance_threshold=0.02):
         """
@@ -297,6 +302,8 @@ class GTFSProcessor:
                     # Fallback to bus if still undefined
                     if edge["co2_kg"] is None:
                         print(f"⚠️ No route_type found for edge {from_node} -> {to_node}, assuming Bus emission factor.")
+                        if self.logger is not None:
+                            self.logger.warning(f"⚠️ No route_type found for edge {from_node} -> {to_node}, assuming Bus emission factor.")
                         edge["co2_kg"] = round(edge.get("distance_km", 0) * route_type_map[3], 5)
 
     def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, cost_type="duration", visual_filename="maps_results/chemin_folium.html"):
@@ -358,6 +365,8 @@ class GTFSProcessor:
 
         if end not in predecessors:
             print("❌ No path found.")
+            if self.logger is not None:
+                self.logger.error("❌ No path found.")
             return float("inf"), []
 
         current = end
@@ -402,12 +411,19 @@ class GTFSProcessor:
                     folium.Marker(c1, tooltip=path[i]).add_to(m)
                 folium.PolyLine([c1, c2], color=color, tooltip=popup_text).add_to(m)
                 # print(            f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
+                if self.logger is not None:
+                    self.logger.info(f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
         m.save(f"{visual_filename}")
         print(f"📍 Map saved to: {visual_filename}")
         print("📏 Total estimated distance:", round(total_distance, 2), "km")
         print("⏱️ Total estimated duration:", round(total_duration, 2), "min")
         print("🌱 Total estimated CO2 emissions:", round(total_co2, 2), "kg")
         print("Path:", " → ".join(path))
+        if self.logger is not None:
+            self.logger.info(f"📏 Total estimated distance: {round(total_distance, 2)} km")
+            self.logger.info(f"⏱️ Total estimated duration: {round(total_duration, 2)} min")
+            self.logger.info(f"🌱 Total estimated CO2 emissions: {round(total_co2, 2)} kg")
+            self.logger.info(f"Path: {' → '.join(path)}")
         return costs[end], path
 
     def find_nearest_accessible_node(self, coord, allow_bike=True):
@@ -433,6 +449,8 @@ class GTFSProcessor:
 
         if not filtered_nodes:
             print("❌ No accessible node found.")
+            if self.logger is not None:
+                self.logger.error("❌ No accessible node found.")
             return None
 
         nearest = min(filtered_nodes.items(), key=lambda item: geodesic(coord, item[1]).km)
@@ -456,6 +474,8 @@ class GTFSProcessor:
         nearest_end = self.find_nearest_accessible_node(coord_end, allow_bike)
         if not nearest_start or not nearest_end:
             print("❌ No accessible node found for start or end.")
+            if self.logger is not None:
+                self.logger.error("❌ No accessible node found for start or end.")
             return
 
         walk_to_start = nearest_start
@@ -467,10 +487,16 @@ class GTFSProcessor:
 
         if cost == float('inf'):
             print("❌ No path found between the selected graph nodes.")
+            if self.logger is not None:
+                self.logger.error("❌ No path found between the selected graph nodes.")
             return
 
         print(f"🚶 Walking distance to start: {walk_to_start['distance_km']} km ({walk_to_start['duration_min']} min)")
         print(f"🚶 Walking distance from end: {walk_from_end['distance_km']} km ({walk_from_end['duration_min']} min)")
         total_time = cost + walk_to_start['duration_min'] + walk_from_end['duration_min']
         print(f"⏱️ Total estimated time (including walking): {round(total_time, 2)} min")
+        if self.logger is not None:
+            self.logger.info(f"🚶 Walking distance to start: {walk_to_start['distance_km']} km ({walk_to_start['duration_min']} min)")
+            self.logger.info(f"🚶 Walking distance from end: {walk_from_end['distance_km']} km ({walk_from_end['duration_min']} min)")
+            self.logger.info(f"⏱️ Total estimated time (including walking): {round(total_time, 2)} min")
 
