@@ -8,35 +8,35 @@ if __name__ == "__main__":
     gmaps = GoogleMapsClient()
     processor = GTFSProcessor(gtfs_dir="data")
 
-    # Step 1: Load GTFS data from files
-    processor.load_dataframes()
-
-    # Step 2: Insert data into the PostgreSQL database
-    processor.insert_into_db()
-
-    # Step 3: Fetch bike-sharing stations
-    processor.fetch_shared_vehicle_stations()
-
-    # Step 4: Build the graph from GTFS trips
-    processor.build_graph_from_trips()
-
-    # Step 5: Simplify the graph (merge very close stops with the same name)
-    processor.simplify_graph(distance_threshold=0.02)  # ≈ 20 meters
-
-    # Step 6: Save the simplified graph
-    processor.save_graph_to_json("graph_results/graphe_simplifie.json")
-
-    # Step 7: Enrich the graph with links between bike-sharing stations (Google API)
-    processor.enrich_with_bike_stations(gmaps)
-
-    # Step 8: Enrich with estimated walking trips between nearby nodes
-    processor.enrich_with_pedestrian_links(max_dist_km=0.2)
-
-    # Step 9: Enrich the graph with emissions data from GTFS route types
-    processor.enrich_transport_emissions_from_routes()
-
-    # Step 10: Save the fully enriched graph
-    processor.save_graph_to_json("graph_results/graphe_complet.json")
+    # # Step 1: Load GTFS data from files
+    # processor.load_dataframes()
+    #
+    # # Step 2: Insert data into the PostgreSQL database
+    # processor.insert_into_db()
+    #
+    # # Step 3: Fetch bike-sharing stations
+    # processor.fetch_shared_vehicle_stations()
+    #
+    # # Step 4: Build the graph from GTFS trips
+    # processor.build_graph_from_trips()
+    #
+    # # Step 5: Simplify the graph (merge very close stops with the same name)
+    # processor.simplify_graph(distance_threshold=0.02)  # ≈ 20 meters
+    #
+    # # Step 6: Save the simplified graph
+    # processor.save_graph_to_json("graph_results/graphe_simplifie.json")
+    #
+    # # Step 7: Enrich the graph with links between bike-sharing stations (Google API)
+    # processor.enrich_with_bike_stations(gmaps)
+    #
+    # # Step 8: Enrich with estimated walking trips between nearby nodes
+    # processor.enrich_with_pedestrian_links(max_dist_km=0.2)
+    #
+    # # Step 9: Enrich the graph with emissions data from GTFS route types
+    # processor.enrich_transport_emissions_from_routes()
+    #
+    # # Step 10: Save the fully enriched graph
+    # processor.save_graph_to_json("graph_results/graphe_complet.json")
 
 
     # Testing the graph:
