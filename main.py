@@ -28,6 +28,8 @@ if __name__ == "__main__":
     #
     # # Step 6: Save the simplified graph
     # processor.save_graph_to_json("graph_results/graphe_simplifie.json")
+
+    # processor.load_graph_from_json("graph_results/graphe_simplifie.json")
     #
     # # Step 7: Enrich the graph with links between bike-sharing stations (Google API)
     # processor.enrich_with_bike_stations(gmaps)
@@ -35,10 +37,10 @@ if __name__ == "__main__":
     # # Step 8: Enrich with estimated walking trips between nearby nodes
     # processor.enrich_with_pedestrian_links(max_dist_km=0.2)
     #
-    # Step 9: Enrich the graph with emissions data from GTFS route types
+    # # Step 9: Enrich the graph with emissions data from GTFS route types
     # processor.enrich_transport_emissions_from_routes()
-
-    # Step 10: Save the fully enriched graph
+    #
+    # # Step 10: Save the fully enriched graph
     # processor.save_graph_to_json("graph_results/graphe_complet.json")
 
     # Testing the graph:

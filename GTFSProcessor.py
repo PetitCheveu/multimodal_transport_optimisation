@@ -188,6 +188,7 @@ class GTFSProcessor:
             for n, c in self.node_coords.items()
             if to_merge.get(n, n) == n or n not in to_merge
         }
+        print(f"Graph simplified to {len(self.graph)} nodes")
 
     def save_graph_to_json(self, path):
         """
@@ -198,6 +199,7 @@ class GTFSProcessor:
         """
         with open(path, 'w', encoding='utf-8') as f:
             json.dump({"graph": self.graph, "coords": self.node_coords}, f, indent=2)
+        print(f"Graph saved to {path}")
 
     def load_graph_from_json(self, path):
         """
@@ -218,18 +220,23 @@ class GTFSProcessor:
         Args:
             gmaps (GoogleMapsClient): Client to fetch travel time and distance between points.
         """
+        self.fetch_shared_vehicle_stations()
+        print(f"🚴 Enriching graph with bike stations...")
         for i, (a_id, a_coord) in enumerate(self.bike_coords.items()):
             for j, (b_id, b_coord) in enumerate(self.bike_coords.items()):
                 if a_id != b_id:
                     result = gmaps.get_travel_info(a_coord, b_coord, mode="bicycling")
                     if result:
+                        # print(f"🚴 {a_id} → {b_id} | Distance: {result['distance_km']} km | Duration: {result['duration_min']} min")
                         self.graph[a_id].append({
                             "to": b_id,
                             "mode": "bike",
                             "distance_km": result["distance_km"],
-                            "duration_min": result["duration_min"]
+                            "duration_min": result["duration_min"],
+                            "co2_kg": 0.0
                         })
         self.node_coords.update(self.bike_coords)
+        print(f"🚴 Enriched graph with {len(self.bike_coords)} bike stations")
 
     def enrich_with_pedestrian_links(self, max_dist_km=0.2, speed_kmh=4.5):
         """
@@ -252,8 +259,10 @@ class GTFSProcessor:
                         "to": id2,
                         "mode": "walk",
                         "distance_km": round(dist, 3),
-                        "duration_min": round(duration, 2)
+                        "duration_min": round(duration, 2),
+                        "co2_kg" : 0.0
                     })
+        print(f"🚶 Enriched graph with {len(self.graph)} walking links")
 
     def enrich_transport_emissions_from_routes(self):
         """
@@ -312,6 +321,7 @@ class GTFSProcessor:
                             self.logger.warning(f"⚠️ No route_type found for edge {from_node} -> {to_node}, assuming Bus emission factor.")
                         edge["co2_kg"] = round(edge.get("distance_km", 0) * route_type_map[3], 5)
                         edge["mode"] = "Bus"
+        print("🚍 Enriched graph with transport emissions data")
 
     def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, allow_buses=True, allow_tramways=True, cost_type="duration", visual_filename="maps_results/chemin_folium.html"):
         """
