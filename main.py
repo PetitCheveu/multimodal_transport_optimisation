@@ -4,14 +4,6 @@ from GoogleApi import GoogleMapsClient
 from dotenv import load_dotenv
 
 if __name__ == "__main__":
-    processor = GTFSProcessor(gtfs_dir="data")
-    processor.load_dataframes()
-
-    processor.build_graph_from_trips()
-    print("Number of vertices (nodes):", len(processor.graph))
-    print(f"Graph: {processor.graph}")
-    print("Example of outgoing edges for the station:", processor.graph.get("1225", []))
-
     load_dotenv()
     gmaps = GoogleMapsClient()
     processor = GTFSProcessor(gtfs_dir="data")
@@ -45,7 +37,6 @@ if __name__ == "__main__":
 
     # Step 10: Save the fully enriched graph
     processor.save_graph_to_json("graph_results/graphe_complet.json")
-
 
 
     # Testing the graph:
