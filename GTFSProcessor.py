@@ -255,7 +255,8 @@ class GTFSProcessor:
         Enrich transport-mode edges in the graph with co2_kg estimates based on GTFS route_type:
         - Tramway (route_type == 0): 0.004 kg/km
         - Bus (route_type == 3): 0.113 kg/km
-        Other modes remain unchanged or set to None.
+        - Walking and biking edges are set to 0.
+        If no route_type is found, fallback is Bus estimate.
         """
         route_type_map = {
             0: 0.004,  # Tramway
@@ -279,9 +280,13 @@ class GTFSProcessor:
 
         for from_node, edges in self.graph.items():
             for edge in edges:
-                if edge["mode"] == "transport":
+                mode = edge.get("mode")
+                if mode in ("walk", "bike"):
+                    edge["co2_kg"] = 0.0
+                elif mode == "transport":
                     to_node = edge["to"]
                     trip_ids = trip_edge_map.get((from_node, to_node), [])
+                    edge["co2_kg"] = None  # Default if nothing found
                     for trip_id in trip_ids:
                         route_type = trip_to_type.get(trip_id)
                         if route_type in route_type_map:
@@ -289,8 +294,12 @@ class GTFSProcessor:
                                 edge.get("distance_km", 0) * route_type_map[route_type], 5
                             )
                             break
+                    # Fallback to bus if still undefined
+                    if edge["co2_kg"] is None:
+                        print(f"⚠️ No route_type found for edge {from_node} -> {to_node}, assuming Bus emission factor.")
+                        edge["co2_kg"] = round(edge.get("distance_km", 0) * route_type_map[3], 5)
 
-    def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, visual_filename="maps_results/chemin_folium.html"):
+    def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, cost_type="duration", visual_filename="maps_results/chemin_folium.html"):
         """
         Visualizes the shortest path between two nodes on a map using Folium.
 
@@ -299,6 +308,7 @@ class GTFSProcessor:
             end (str): End node ID.
             allow_bike (bool): Whether to include bike edges in the path.
             allow_transport (bool): Whether to include public transport edges.
+            cost_type (str): Cost type for pathfinding ("duration", "distance", "nb_stops", "co2").
             visual_filename (str): Path to save the resulting HTML map.
 
         Returns:
@@ -322,11 +332,25 @@ class GTFSProcessor:
                     continue
                 if not allow_transport and edge.get("mode") == "transport":
                     continue
-                duration = edge.get("duration_min")
-                if duration is None:
-                    duration = 0
+
                 next_node = edge["to"]
-                new_cost = cost + duration
+                if cost_type == "distance":
+                    distance = edge.get("distance_km")
+                    if distance is None:
+                        distance = 0
+                    new_cost = cost + distance
+                elif cost_type == "duration":
+                    duration = edge.get("duration_min")
+                    if duration is None:
+                        duration = 0
+                    new_cost = cost + duration
+                elif cost_type == "co2":
+                    co2 = edge.get("co2_kg", 0)
+                    if co2 is None:
+                        co2 = 0
+                    new_cost = cost + co2
+                else:
+                    new_cost = cost + 1
                 if next_node not in costs or new_cost < costs[next_node]:
                     costs[next_node] = new_cost
                     heapq.heappush(queue, (new_cost, next_node, path))
@@ -349,6 +373,8 @@ class GTFSProcessor:
 
         m = folium.Map(location=self.node_coords.get(start, [50.35, 3.52]), zoom_start=13)
         total_distance = 0
+        total_duration = 0
+        total_co2 = 0
         folium.Marker(self.node_coords[start], tooltip=start, icon=folium.Icon(color="green")).add_to(m)
         folium.Marker(self.node_coords[end], tooltip=end, icon=folium.Icon(color="red")).add_to(m)
 
@@ -361,7 +387,9 @@ class GTFSProcessor:
                 dist = edge_data.get('distance_km', '?')
                 duration = edge_data.get('duration_min', '?')
                 co2 = edge_data.get('co2_kg', '?')
-                total_distance += edge_data.get('distance_km', 0) or 0
+                total_distance += dist or 0
+                total_duration += duration or 0
+                total_co2 += co2 or 0
 
                 color = "gray"
                 if mode == "transport":
@@ -373,11 +401,12 @@ class GTFSProcessor:
                 if c1 != self.node_coords.get(path[0]):
                     folium.Marker(c1, tooltip=path[i]).add_to(m)
                 folium.PolyLine([c1, c2], color=color, tooltip=popup_text).add_to(m)
-                print(            f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
+                # print(            f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
         m.save(f"{visual_filename}")
         print(f"📍 Map saved to: {visual_filename}")
         print("📏 Total estimated distance:", round(total_distance, 2), "km")
-        print("⏱️ Total estimated duration:", costs[end], "min")
+        print("⏱️ Total estimated duration:", round(total_duration, 2), "min")
+        print("🌱 Total estimated CO2 emissions:", round(total_co2, 2), "kg")
         print("Path:", " → ".join(path))
         return costs[end], path
 
