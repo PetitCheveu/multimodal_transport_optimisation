@@ -123,7 +123,7 @@ class GTFSProcessor:
         if self.node_coords:
             print(f"🧭 {len(self.node_coords)} stop coordinates loaded")
             if self.logger is not None:
-                logger.info(f"🧭 {len(self.node_coords)} stop coordinates loaded")
+                self.logger.info(f"🧭 {len(self.node_coords)} stop coordinates loaded")
 
         grouped = self.stop_times_df.groupby("trip_id")
         added = 0
@@ -151,7 +151,7 @@ class GTFSProcessor:
 
         print(f"✅ Graph built with {len(self.graph)} nodes and {added} transport edges")
         if self.logger is not None:
-            logger.info(f"✅ Graph built with {len(self.graph)} nodes and {added} transport edges")
+            self.logger.info(f"✅ Graph built with {len(self.graph)} nodes and {added} transport edges")
 
     def simplify_graph(self, distance_threshold=0.02):
         """
@@ -268,6 +268,11 @@ class GTFSProcessor:
             3: 0.113  # Bus
         }
 
+        route_type_name_map = {
+            0: "Tramway",
+            3: "Bus"
+        }
+
         # Map each trip_id to route_type
         trip_route_map = pd.merge(self.trips_df, self.routes_df, on="route_id", how="left")
         trip_to_type = dict(zip(trip_route_map.trip_id, trip_route_map.route_type))
@@ -298,6 +303,7 @@ class GTFSProcessor:
                             edge["co2_kg"] = round(
                                 edge.get("distance_km", 0) * route_type_map[route_type], 5
                             )
+                            edge["mode"] = route_type_name_map[route_type]
                             break
                     # Fallback to bus if still undefined
                     if edge["co2_kg"] is None:
@@ -305,8 +311,9 @@ class GTFSProcessor:
                         if self.logger is not None:
                             self.logger.warning(f"⚠️ No route_type found for edge {from_node} -> {to_node}, assuming Bus emission factor.")
                         edge["co2_kg"] = round(edge.get("distance_km", 0) * route_type_map[3], 5)
+                        edge["mode"] = "Bus"
 
-    def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, cost_type="duration", visual_filename="maps_results/chemin_folium.html"):
+    def visualize_shortest_path(self, start, end, allow_bike=True, allow_transport=True, allow_buses=True, allow_tramways=True, cost_type="duration", visual_filename="maps_results/chemin_folium.html"):
         """
         Visualizes the shortest path between two nodes on a map using Folium.
 
@@ -315,6 +322,8 @@ class GTFSProcessor:
             end (str): End node ID.
             allow_bike (bool): Whether to include bike edges in the path.
             allow_transport (bool): Whether to include public transport edges.
+            allow_buses (bool): Whether to include bus edges in the path.
+            allow_tramways (bool): Whether to include tramway edges in the path.
             cost_type (str): Cost type for pathfinding ("duration", "distance", "nb_stops", "co2").
             visual_filename (str): Path to save the resulting HTML map.
 
@@ -337,7 +346,11 @@ class GTFSProcessor:
             for edge in self.graph.get(node, []):
                 if not allow_bike and edge.get("mode") == "bike":
                     continue
-                if not allow_transport and edge.get("mode") == "transport":
+                if not allow_transport and (edge.get("mode") == "transport" or edge.get("mode") == "Bus" or edge.get("mode") == "Tramway"):
+                    continue
+                if not allow_buses and edge.get("mode") == "Bus":
+                    continue
+                if not allow_tramways and edge.get("mode") == "Tramway":
                     continue
 
                 next_node = edge["to"]
@@ -401,14 +414,16 @@ class GTFSProcessor:
                 total_co2 += co2 or 0
 
                 color = "gray"
-                if mode == "transport":
+                if mode == "transport" or mode == "Tramway" or mode == "Bus":
                     color = "red"
                 elif mode == "bike":
                     color = "blue"
 
                 popup_text = f"{path[i]} → {path[i + 1]} | Mode: {mode} | Dist: {dist} km | Durée: {duration} min | CO2: {co2} kg"
-                if c1 != self.node_coords.get(path[0]):
-                    folium.Marker(c1, tooltip=path[i]).add_to(m)
+                if i > 0:
+                    prev_edge = next((e for e in self.graph.get(path[i - 1], []) if e['to'] == path[i]), {})
+                    if edge_data.get('mode') != prev_edge.get('mode'):
+                        folium.Marker(c1, tooltip=path[i]).add_to(m)
                 folium.PolyLine([c1, c2], color=color, tooltip=popup_text).add_to(m)
                 # print(            f"• {path[i]} → {path[i + 1]} | Mode : {mode} | Distance : {dist} km | Durée : {duration} min | CO2 : {co2} kg")
                 if self.logger is not None:

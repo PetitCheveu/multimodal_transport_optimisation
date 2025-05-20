@@ -36,10 +36,10 @@ if __name__ == "__main__":
     # processor.enrich_with_pedestrian_links(max_dist_km=0.2)
     #
     # Step 9: Enrich the graph with emissions data from GTFS route types
-    processor.enrich_transport_emissions_from_routes()
+    # processor.enrich_transport_emissions_from_routes()
 
     # Step 10: Save the fully enriched graph
-    processor.save_graph_to_json("graph_results/graphe_complet.json")
+    # processor.save_graph_to_json("graph_results/graphe_complet.json")
 
     # Testing the graph:
 
